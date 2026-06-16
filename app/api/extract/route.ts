@@ -5,7 +5,7 @@ import {
   parseExtractionResponse,
   type ImageInput,
   type SupportedMediaType,
-} from '@/lib/anthropic';
+} from '@/lib/openai';
 import { deduplicate } from '@/lib/deduplicate';
 import { listLeads } from '@/lib/leadRepo';
 import type { ExtractedLead } from '@/lib/types';

@@ -1,13 +1,12 @@
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { EXTRACTION_SYSTEM_PROMPT } from './prompt';
 import { coerceStatus } from './leadStatus';
 import type { ExtractedLead, ScreenshotType, Confidence } from './types';
 
-// Claude vision model used to read screenshots (per brief).
-export const EXTRACT_MODEL = 'claude-sonnet-4-6';
+export const EXTRACT_MODEL = 'gpt-4o';
 export const EXTRACT_MAX_TOKENS = 2000;
 
-// Image formats Claude's vision API accepts. HEIC must be converted upstream.
+// Image formats accepted by the OpenAI vision API. HEIC must be converted upstream.
 export type SupportedMediaType =
   | 'image/jpeg'
   | 'image/png'
@@ -19,33 +18,29 @@ export interface ImageInput {
   base64: string;
 }
 
-function getClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+function getClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error(
-      'ANTHROPIC_API_KEY is not set. Add it to .env.local and restart the dev server.',
+      'OPENAI_API_KEY is not set. Add it to .env.local and restart the dev server.',
     );
   }
-  return new Anthropic({ apiKey });
+  return new OpenAI({ apiKey });
 }
 
 /**
- * Send all screenshots to Claude in a single multi-image call and return the
+ * Send all screenshots to GPT-4o in a single multi-image call and return the
  * raw text response. JSON parsing is handled separately so the caller can
  * surface the raw output on failure.
  */
 export async function extractLeadsFromImages(images: ImageInput[]): Promise<string> {
   const client = getClient();
 
-  const content: Anthropic.ContentBlockParam[] = [
+  const content: OpenAI.Chat.ChatCompletionContentPart[] = [
     ...images.map(
-      (img): Anthropic.ContentBlockParam => ({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: img.mediaType,
-          data: img.base64,
-        },
+      (img): OpenAI.Chat.ChatCompletionContentPartImage => ({
+        type: 'image_url',
+        image_url: { url: `data:${img.mediaType};base64,${img.base64}` },
       }),
     ),
     {
@@ -54,22 +49,20 @@ export async function extractLeadsFromImages(images: ImageInput[]): Promise<stri
     },
   ];
 
-  const response = await client.messages.create({
+  const response = await client.chat.completions.create({
     model: EXTRACT_MODEL,
     max_tokens: EXTRACT_MAX_TOKENS,
-    system: EXTRACTION_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content }],
+    messages: [
+      { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+      { role: 'user', content },
+    ],
   });
 
-  return response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
-    .trim();
+  return (response.choices[0]?.message?.content ?? '').trim();
 }
 
 /**
- * Strictly parse Claude's response into leads. Tolerates accidental markdown
+ * Strictly parse GPT-4o's response into leads. Tolerates accidental markdown
  * fences but otherwise requires valid JSON with a `leads` array. Throws on
  * failure so the route can return the raw output for debugging.
  */
@@ -79,12 +72,12 @@ export function parseExtractionResponse(raw: string): ExtractedLead[] {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    throw new Error('Claude did not return valid JSON.');
+    throw new Error('The AI did not return valid JSON.');
   }
 
   const leadsValue = (parsed as { leads?: unknown })?.leads;
   if (!Array.isArray(leadsValue)) {
-    throw new Error('Claude response did not contain a "leads" array.');
+    throw new Error('AI response did not contain a "leads" array.');
   }
 
   return leadsValue.map((item) => normalizeExtractedLead(item));
