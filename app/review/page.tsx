@@ -124,10 +124,16 @@ export default function ReviewPage() {
               {summary.created} added · {summary.updated} updated · {summary.skipped} skipped
             </p>
           </div>
-          <div className="mt-6">
+          <div className="mt-6 flex flex-col gap-3">
+            <Link
+              href="/crm"
+              className="flex h-12 items-center justify-center rounded-xl bg-blue-600 font-semibold text-white"
+            >
+              View all leads
+            </Link>
             <Link
               href="/"
-              className="flex h-12 items-center justify-center rounded-xl bg-blue-600 font-semibold text-white"
+              className="flex h-12 items-center justify-center rounded-xl border border-slate-300 bg-white font-semibold text-slate-700"
             >
               Upload more screenshots
             </Link>

@@ -176,7 +176,7 @@ export default function UploadPage() {
 
   return (
     <div className="flex flex-col min-h-full">
-      <AppHeader />
+      <AppHeader back={{ href: '/crm', label: 'View leads' }} />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <h2 className="text-base font-medium text-slate-800">

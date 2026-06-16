@@ -1,4 +1,4 @@
-import type { Lead as PrismaLead } from '@prisma/client';
+import { Prisma, type Lead as PrismaLead } from '@prisma/client';
 import { prisma } from './prisma';
 import { normalizePhone } from './normalize';
 import { coerceStatus } from './leadStatus';
@@ -98,4 +98,45 @@ export async function updateLeadFromPrepared(
     },
   });
   return toLeadDTO(row);
+}
+
+export interface LeadEditableFields {
+  phoneNumber?: string | null;
+  displayName?: string | null;
+  childName?: string | null;
+  childAge?: string | null;
+  notes?: string;
+  status?: string;
+}
+
+/** Update selected fields on an existing lead. Returns null if it doesn't exist. */
+export async function updateLeadFields(
+  id: string,
+  fields: LeadEditableFields,
+): Promise<LeadDTO | null> {
+  const existing = await prisma.lead.findUnique({ where: { id } });
+  if (!existing) return null;
+
+  const data: Prisma.LeadUpdateInput = {};
+  if ('phoneNumber' in fields) {
+    data.phoneNumber = fields.phoneNumber ?? null;
+    data.phoneNumberNormalized = normalizePhone(fields.phoneNumber ?? null).normalized;
+  }
+  if ('displayName' in fields) data.displayName = fields.displayName ?? null;
+  if ('childName' in fields) data.childName = fields.childName ?? null;
+  if ('childAge' in fields) data.childAge = fields.childAge ?? null;
+  if (typeof fields.notes === 'string') data.notes = fields.notes;
+  if ('status' in fields) data.status = coerceStatus(fields.status);
+
+  const row = await prisma.lead.update({ where: { id }, data });
+  return toLeadDTO(row);
+}
+
+export async function deleteLead(id: string): Promise<boolean> {
+  try {
+    await prisma.lead.delete({ where: { id } });
+    return true;
+  } catch {
+    return false;
+  }
 }
