@@ -1,0 +1,35 @@
+// Prisma schema for the Andalusia Academy lead ingestion tool.
+// SQLite has no native enum or array support, so `status`/`source` are stored
+// as validated strings (see lib/leadStatus.ts) and `screenshotFilenames` as a
+// JSON-encoded string array.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id                    String   @id @default(uuid())
+  // Phone is stored twice: as displayed (`phoneNumber`) and normalized for
+  // deduplication matching (`phoneNumberNormalized`). See lib/normalize.ts.
+  phoneNumber           String?
+  phoneNumberNormalized String?
+  displayName           String?
+  childName             String?
+  childAge              String?
+  notes                 String   @default("")
+  status                String   @default("unknown")
+  source                String // 'inbox_screenshot' | 'chat_screenshot' | 'manual'
+  screenshotFilenames   String   @default("[]") // JSON string array
+  firstSeenAt           DateTime @default(now())
+  lastUpdatedAt         DateTime @updatedAt
+  rawExtraction         String   @default("") // raw Claude JSON, for debugging
+
+  @@index([phoneNumberNormalized])
+  @@index([displayName])
+  @@index([status])
+}

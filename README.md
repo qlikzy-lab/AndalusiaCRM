@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Andalusia Academy — WhatsApp Lead Ingestion
 
-## Getting Started
+Upload screenshots of WhatsApp messages (inbox lists or individual chats); Claude
+reads them, extracts lead data, deduplicates it, and saves structured leads to a
+local CRM. Built for a non-technical user managing school enquiries.
 
-First, run the development server:
+- **Stack:** Next.js (App Router) + TypeScript + Tailwind CSS
+- **AI vision:** Anthropic Claude (`claude-sonnet-4-6`)
+- **Database:** SQLite via Prisma (local)
+- UI is in English; AI-generated notes are in English (internal use).
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install          # uses an isolated npm cache (see .npmrc)
+cp .env.example .env.local   # then add your ANTHROPIC_API_KEY
+npx prisma migrate dev       # creates prisma/dev.db (already done once)
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable            | Where        | Purpose                          |
+| ------------------- | ------------ | -------------------------------- |
+| `ANTHROPIC_API_KEY` | `.env.local` | Calls Claude to read screenshots |
+| `DATABASE_URL`      | `.env`       | SQLite path (`file:./dev.db`)    |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+> The shared npm cache on this machine has root-owned entries that break installs,
+> so `.npmrc` points npm at `/tmp/acrm-npm-cache`.
 
-## Learn More
+## Mock mode (no API key / no credits)
 
-To learn more about Next.js, take a look at the following resources:
+Set `MOCK_EXTRACTION=1` to make `/api/extract` return fixture leads instead of
+calling Claude — useful for working on the UI:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+MOCK_EXTRACTION=1 npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Build status
 
-## Deploy on Vercel
+- **Phase 1 ✅** — Foundation, upload screen, `/api/extract` (Claude vision,
+  HEIC→JPEG, strict JSON parsing, graceful errors).
+- **Phase 2 (next)** — Deduplication, review screen (edit / merge / skip), save
+  to DB + `pushToCRM()`.
+- **Phase 3** — CRM dashboard (search, filter, manual edit/add, CSV export).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Project structure
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+app/
+  page.tsx              Upload screen
+  api/extract/route.ts  Screenshots → Claude → JSON
+lib/
+  anthropic.ts          Claude client + multi-image extract + JSON parse
+  prompt.ts             Extraction system prompt
+  normalize.ts          Phone normalization (Tunisian +216)
+  leadStatus.ts         Status labels + colors
+  crm.ts                pushToCRM() placeholder
+  prisma.ts             Prisma client singleton
+  types.ts              Shared types
+prisma/schema.prisma    Lead model
+```
