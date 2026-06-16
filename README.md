@@ -37,20 +37,25 @@ calling Claude — useful for working on the UI:
 MOCK_EXTRACTION=1 npm run dev
 ```
 
-## Build status
+## Build status — all phases complete
 
 - **Phase 1 ✅** — Foundation, upload screen, `/api/extract` (Claude vision,
   HEIC→JPEG, strict JSON parsing, graceful errors).
-- **Phase 2 (next)** — Deduplication, review screen (edit / merge / skip), save
-  to DB + `pushToCRM()`.
-- **Phase 3** — CRM dashboard (search, filter, manual edit/add, CSV export).
+- **Phase 2 ✅** — Deduplication, review screen (edit / merge / skip / save-as-new),
+  save to DB + `pushToCRM()`.
+- **Phase 3 ✅** — CRM dashboard (search, status filter, manual add, inline edit,
+  delete, CSV export).
 
 ## Project structure
 
 ```
 app/
   page.tsx              Upload screen
-  api/extract/route.ts  Screenshots → Claude → JSON
+  review/page.tsx       Review screen (dedup results, edit, save)
+  crm/page.tsx          CRM dashboard (search, filter, edit, CSV)
+  api/extract/route.ts  Screenshots → Claude → JSON + dedup
+  api/leads/route.ts    List + save leads
+  api/leads/[id]/route.ts  Edit + delete a lead
 lib/
   anthropic.ts          Claude client + multi-image extract + JSON parse
   prompt.ts             Extraction system prompt
