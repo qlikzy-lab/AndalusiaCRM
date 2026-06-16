@@ -6,6 +6,8 @@ import {
   type ImageInput,
   type SupportedMediaType,
 } from '@/lib/anthropic';
+import { deduplicate } from '@/lib/deduplicate';
+import { listLeads } from '@/lib/leadRepo';
 import type { ExtractedLead } from '@/lib/types';
 
 // heic-convert and Buffer require the Node.js runtime (not Edge).
@@ -56,46 +58,47 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Local dev convenience: return fixture leads without calling Claude.
-  // Enable by setting MOCK_EXTRACTION=1 in the environment.
-  if (process.env.MOCK_EXTRACTION === '1') {
-    const leads = mockLeads();
-    return NextResponse.json({
-      leads,
-      filenames,
-      raw: JSON.stringify({ leads }, null, 2),
-      mock: true,
-    });
-  }
-
-  // Call Claude (multi-image, single request).
-  let raw: string;
-  try {
-    raw = await extractLeadsFromImages(images);
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : 'The AI request failed. Please try again.',
-      },
-      { status: 502 },
-    );
-  }
-
-  // Strict JSON parse — on failure, surface the raw output for debugging.
+  // Obtain leads + raw response, either from Claude or the dev fixture.
   let leads: ExtractedLead[];
+  let raw: string;
+  const mock = process.env.MOCK_EXTRACTION === '1';
+
+  if (mock) {
+    leads = mockLeads();
+    raw = JSON.stringify({ leads }, null, 2);
+  } else {
+    try {
+      raw = await extractLeadsFromImages(images);
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'The AI request failed. Please try again.' },
+        { status: 502 },
+      );
+    }
+    // Strict JSON parse — on failure, surface the raw output for debugging.
+    try {
+      leads = parseExtractionResponse(raw);
+    } catch {
+      return NextResponse.json(
+        { error: "Could not read the AI's response as valid JSON.", raw },
+        { status: 422 },
+      );
+    }
+  }
+
+  // Deduplicate against the existing database and within this batch.
+  let result;
   try {
-    leads = parseExtractionResponse(raw);
+    const existing = await listLeads();
+    result = deduplicate(leads, existing, filenames, raw);
   } catch {
     return NextResponse.json(
-      { error: "Could not read the AI's response as valid JSON.", raw },
-      { status: 422 },
+      { error: 'Leads were read, but checking for duplicates failed.', raw },
+      { status: 500 },
     );
   }
 
-  return NextResponse.json({ leads, filenames, raw });
+  return NextResponse.json({ result, filenames, raw, mock });
 }
 
 /** Convert an uploaded file into a Claude-supported base64 image (HEIC→JPEG). */

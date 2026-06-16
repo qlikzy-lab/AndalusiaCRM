@@ -47,3 +47,71 @@ export interface Lead {
   lastUpdatedAt: Date;
   rawExtraction: string;
 }
+
+/** A saved lead serialized for the client (dates as ISO strings, filenames parsed). */
+export interface LeadDTO {
+  id: string;
+  phoneNumber: string | null;
+  phoneNumberNormalized: string | null;
+  displayName: string | null;
+  childName: string | null;
+  childAge: string | null;
+  notes: string;
+  status: LeadStatus;
+  source: LeadSource;
+  screenshotFilenames: string[];
+  firstSeenAt: string;
+  lastUpdatedAt: string;
+  rawExtraction: string;
+}
+
+/**
+ * An extracted lead prepared for review and saving: phone normalized, source
+ * derived, given a client-side id, and editable on the review screen.
+ */
+export interface PreparedLead {
+  tempId: string;
+  phoneNumber: string | null;
+  phoneNumberNormalized: string | null;
+  displayName: string | null;
+  childName: string | null;
+  childAge: string | null;
+  notes: string;
+  status: LeadStatus;
+  source: LeadSource;
+  confidence: Confidence;
+  screenshotFilenames: string[];
+  rawExtraction: string;
+}
+
+export type DuplicateAction = 'skip' | 'update' | 'new';
+
+export interface DuplicateMatch {
+  incoming: PreparedLead;
+  existing: LeadDTO;
+  matchedOn: 'phone' | 'name';
+  ambiguous: boolean; // matched more than one existing lead
+}
+
+export interface DedupResult {
+  newLeads: PreparedLead[];
+  duplicates: DuplicateMatch[];
+  couldNotExtract: PreparedLead[];
+}
+
+export interface SaveDecision {
+  incoming: PreparedLead;
+  existingId: string;
+  action: DuplicateAction;
+}
+
+export interface SaveRequest {
+  newLeads: PreparedLead[];
+  decisions: SaveDecision[];
+}
+
+export interface SaveSummary {
+  created: number;
+  updated: number;
+  skipped: number;
+}
