@@ -78,6 +78,7 @@ export default function CrmPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'table'>('list');
   // editor: a lead id when editing, 'new' when adding, null when closed.
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [draft, setDraft] = useState<DraftLead>(EMPTY_DRAFT);
@@ -215,7 +216,7 @@ export default function CrmPage() {
     <div className="flex flex-col min-h-full">
       <AppHeader subtitle="Leads" back={{ href: '/', label: 'Upload' }} />
 
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         {/* Controls */}
         <div className="flex flex-col gap-3">
           <input
@@ -250,10 +251,37 @@ export default function CrmPage() {
             >
               Export CSV
             </button>
+            {/* View toggle */}
+            <div className="flex h-11 overflow-hidden rounded-xl border border-slate-300 bg-white">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                title="List view"
+                className={`flex w-11 items-center justify-center text-base transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                ☰
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                title="Table view"
+                className={`flex w-11 items-center justify-center text-base transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                ⊞
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* List */}
+        {/* Leads */}
         <div className="mt-5">
           {loading ? (
             <p className="text-sm text-slate-500">Loading…</p>
@@ -268,7 +296,7 @@ export default function CrmPage() {
             <p className="text-sm text-slate-500">
               {leads.length === 0 ? 'No leads yet.' : 'No leads match your search.'}
             </p>
-          ) : (
+          ) : viewMode === 'list' ? (
             <ul className="space-y-2">
               {filtered.map((lead) => (
                 <li key={lead.id}>
@@ -295,6 +323,49 @@ export default function CrmPage() {
                 </li>
               ))}
             </ul>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Phone</th>
+                    <th className="px-4 py-3">Child</th>
+                    <th className="px-4 py-3">Age / Grade</th>
+                    <th className="px-4 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filtered.map((lead) => (
+                    <tr
+                      key={lead.id}
+                      onClick={() => openEdit(lead)}
+                      className="cursor-pointer bg-white transition-colors hover:bg-slate-50"
+                    >
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        {lead.displayName || <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {lead.phoneNumber || <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {lead.childName || <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {lead.childAge || <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[lead.status]}`}
+                        >
+                          {STATUS_LABELS[lead.status]}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           {!loading && !error && filtered.length > 0 && (
             <p className="mt-3 text-xs text-slate-400">
