@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AppHeader } from '@/components/AppHeader';
-import { LEAD_STATUSES, STATUS_LABELS, STATUS_BADGE_CLASSES } from '@/lib/leadStatus';
+import { LEAD_STATUSES, STATUS_LABELS, getStatusLabel, getStatusBadgeClass } from '@/lib/leadStatus';
 import type { LeadDTO, LeadStatus, PreparedLead } from '@/lib/types';
+import type { CustomStatusDTO } from '@/lib/customStatusRepo';
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-400 focus:outline-none';
@@ -43,29 +44,9 @@ function csvEscape(value: string | null): string {
 }
 
 function leadsToCsv(leads: LeadDTO[]): string {
-  const headers = [
-    'Name',
-    'Phone',
-    'Child',
-    'Age/Grade',
-    'Status',
-    'Source',
-    'Notes',
-    'First seen',
-    'Last updated',
-  ];
+  const headers = ['Name', 'Phone', 'Child', 'Age/Grade', 'Status', 'Source', 'Notes', 'First seen', 'Last updated'];
   const rows = leads.map((l) =>
-    [
-      l.displayName,
-      l.phoneNumber,
-      l.childName,
-      l.childAge,
-      STATUS_LABELS[l.status],
-      l.source,
-      l.notes,
-      l.firstSeenAt,
-      l.lastUpdatedAt,
-    ]
+    [l.displayName, l.phoneNumber, l.childName, l.childAge, getStatusLabel(l.status), l.source, l.notes, l.firstSeenAt, l.lastUpdatedAt]
       .map((v) => csvEscape(v == null ? '' : String(v)))
       .join(','),
   );
@@ -77,22 +58,38 @@ export default function CrmPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'table'>('list');
-  // editor: a lead id when editing, 'new' when adding, null when closed.
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [draft, setDraft] = useState<DraftLead>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
 
+  // Custom statuses
+  const [customStatuses, setCustomStatuses] = useState<CustomStatusDTO[]>([]);
+  const [showManage, setShowManage] = useState(false);
+  const [newStatusLabel, setNewStatusLabel] = useState('');
+  const [manageError, setManageError] = useState<string | null>(null);
+  const [manageSaving, setManageSaving] = useState(false);
+
+  const allStatuses = useMemo(
+    () => [...LEAD_STATUSES, ...customStatuses.map((s) => s.label)],
+    [customStatuses],
+  );
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/leads');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? 'Failed to load leads.');
-      setLeads(data.leads as LeadDTO[]);
+      const [leadsRes, statusesRes] = await Promise.all([
+        fetch('/api/leads'),
+        fetch('/api/statuses'),
+      ]);
+      const leadsData = await leadsRes.json();
+      const statusesData = await statusesRes.json();
+      if (!leadsRes.ok) throw new Error(leadsData?.error ?? 'Failed to load leads.');
+      setLeads(leadsData.leads as LeadDTO[]);
+      setCustomStatuses(statusesData.statuses ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load leads.');
     } finally {
@@ -100,8 +97,14 @@ export default function CrmPage() {
     }
   }
 
+  async function loadStatuses() {
+    const res = await fetch('/api/statuses');
+    const data = await res.json();
+    setCustomStatuses(data.statuses ?? []);
+  }
+
   useEffect(() => {
-    // Fetch leads once on mount.
+    // Fetch leads and custom statuses once on mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, []);
@@ -130,9 +133,7 @@ export default function CrmPage() {
     setEditorError(null);
     setEditing(lead.id);
   }
-  function closeEditor() {
-    setEditing(null);
-  }
+  function closeEditor() { setEditing(null); }
 
   async function saveDraft() {
     if (!draft.displayName.trim() && !draft.phoneNumber.trim()) {
@@ -146,7 +147,7 @@ export default function CrmPage() {
         const prepared: PreparedLead = {
           tempId: crypto.randomUUID(),
           phoneNumber: draft.phoneNumber.trim() || null,
-          phoneNumberNormalized: null, // server recomputes
+          phoneNumberNormalized: null,
           displayName: draft.displayName.trim() || null,
           childName: draft.childName.trim() || null,
           childAge: draft.childAge.trim() || null,
@@ -202,6 +203,38 @@ export default function CrmPage() {
     }
   }
 
+  async function addCustomStatus() {
+    const label = newStatusLabel.trim();
+    if (!label) return;
+    setManageSaving(true);
+    setManageError(null);
+    try {
+      const res = await fetch('/api/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? 'Could not add status.');
+      setNewStatusLabel('');
+      await loadStatuses();
+    } catch (e) {
+      setManageError(e instanceof Error ? e.message : 'Failed to add status.');
+    } finally {
+      setManageSaving(false);
+    }
+  }
+
+  async function removeCustomStatus(id: string) {
+    setManageSaving(true);
+    try {
+      await fetch(`/api/statuses/${id}`, { method: 'DELETE' });
+      await loadStatuses();
+    } finally {
+      setManageSaving(false);
+    }
+  }
+
   function exportCsv() {
     const blob = new Blob([leadsToCsv(filtered)], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -225,15 +258,23 @@ export default function CrmPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <FilterChip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
               All
             </FilterChip>
-            {LEAD_STATUSES.map((s) => (
+            {allStatuses.map((s) => (
               <FilterChip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
-                {STATUS_LABELS[s]}
+                {getStatusLabel(s)}
               </FilterChip>
             ))}
+            <button
+              type="button"
+              onClick={() => { setShowManage(true); setManageError(null); setNewStatusLabel(''); }}
+              title="Manage statuses"
+              className="rounded-full border border-dashed border-slate-400 px-3 py-1 text-sm text-slate-500 hover:border-slate-600 hover:text-slate-700"
+            >
+              + Status
+            </button>
           </div>
           <div className="flex gap-2">
             <button
@@ -251,17 +292,12 @@ export default function CrmPage() {
             >
               Export CSV
             </button>
-            {/* View toggle */}
             <div className="flex h-11 overflow-hidden rounded-xl border border-slate-300 bg-white">
               <button
                 type="button"
                 onClick={() => setViewMode('list')}
                 title="List view"
-                className={`flex w-11 items-center justify-center text-base transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-500 hover:bg-slate-50'
-                }`}
+                className={`flex w-11 items-center justify-center text-base transition-colors ${viewMode === 'list' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
               >
                 ☰
               </button>
@@ -269,11 +305,7 @@ export default function CrmPage() {
                 type="button"
                 onClick={() => setViewMode('table')}
                 title="Table view"
-                className={`flex w-11 items-center justify-center text-base transition-colors ${
-                  viewMode === 'table'
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-500 hover:bg-slate-50'
-                }`}
+                className={`flex w-11 items-center justify-center text-base transition-colors ${viewMode === 'table' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
               >
                 ⊞
               </button>
@@ -288,9 +320,7 @@ export default function CrmPage() {
           ) : error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
               {error}
-              <button type="button" onClick={load} className="ml-2 underline">
-                Retry
-              </button>
+              <button type="button" onClick={load} className="ml-2 underline">Retry</button>
             </div>
           ) : filtered.length === 0 ? (
             <p className="text-sm text-slate-500">
@@ -314,10 +344,8 @@ export default function CrmPage() {
                         {lead.childName ? ` · ${lead.childName}` : ''}
                       </p>
                     </div>
-                    <span
-                      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[lead.status]}`}
-                    >
-                      {STATUS_LABELS[lead.status]}
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(lead.status)}`}>
+                      {getStatusLabel(lead.status)}
                     </span>
                   </button>
                 </li>
@@ -355,10 +383,8 @@ export default function CrmPage() {
                         {lead.childAge || <span className="text-slate-400">—</span>}
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[lead.status]}`}
-                        >
-                          {STATUS_LABELS[lead.status]}
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(lead.status)}`}>
+                          {getStatusLabel(lead.status)}
                         </span>
                       </td>
                     </tr>
@@ -375,7 +401,80 @@ export default function CrmPage() {
         </div>
       </main>
 
-      {/* Editor modal */}
+      {/* Manage statuses modal */}
+      {showManage && (
+        <div
+          className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 sm:items-center"
+          onClick={() => setShowManage(false)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-900">Manage statuses</h2>
+              <button type="button" onClick={() => setShowManage(false)} className="text-sm text-slate-500">Close</button>
+            </div>
+
+            <p className="mb-3 text-xs text-slate-500">Built-in statuses cannot be removed.</p>
+
+            {/* Built-in */}
+            <div className="mb-4 space-y-1">
+              {LEAD_STATUSES.map((s) => (
+                <div key={s} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(s)}`}>
+                    {STATUS_LABELS[s]}
+                  </span>
+                  <span className="text-xs text-slate-400">built-in</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Custom */}
+            {customStatuses.length > 0 && (
+              <div className="mb-4 space-y-1">
+                {customStatuses.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                      {s.label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeCustomStatus(s.id)}
+                      disabled={manageSaving}
+                      className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add new */}
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                placeholder="New status name…"
+                value={newStatusLabel}
+                onChange={(e) => setNewStatusLabel(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addCustomStatus()}
+              />
+              <button
+                type="button"
+                onClick={addCustomStatus}
+                disabled={manageSaving || !newStatusLabel.trim()}
+                className="flex h-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+            {manageError && <p className="mt-2 text-sm text-red-600">{manageError}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Lead editor modal */}
       {editing !== null && (
         <div
           className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 sm:items-center"
@@ -389,40 +488,21 @@ export default function CrmPage() {
               <h2 className="text-base font-semibold text-slate-900">
                 {editing === 'new' ? 'Add a lead' : 'Edit lead'}
               </h2>
-              <button type="button" onClick={closeEditor} className="text-sm text-slate-500">
-                Close
-              </button>
+              <button type="button" onClick={closeEditor} className="text-sm text-slate-500">Close</button>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Name">
-                <input
-                  className={inputClass}
-                  value={draft.displayName}
-                  onChange={(e) => setDraft({ ...draft, displayName: e.target.value })}
-                />
+                <input className={inputClass} value={draft.displayName} onChange={(e) => setDraft({ ...draft, displayName: e.target.value })} />
               </Field>
               <Field label="Phone">
-                <input
-                  className={inputClass}
-                  inputMode="tel"
-                  value={draft.phoneNumber}
-                  onChange={(e) => setDraft({ ...draft, phoneNumber: e.target.value })}
-                />
+                <input className={inputClass} inputMode="tel" value={draft.phoneNumber} onChange={(e) => setDraft({ ...draft, phoneNumber: e.target.value })} />
               </Field>
               <Field label="Child">
-                <input
-                  className={inputClass}
-                  value={draft.childName}
-                  onChange={(e) => setDraft({ ...draft, childName: e.target.value })}
-                />
+                <input className={inputClass} value={draft.childName} onChange={(e) => setDraft({ ...draft, childName: e.target.value })} />
               </Field>
               <Field label="Age / Grade">
-                <input
-                  className={inputClass}
-                  value={draft.childAge}
-                  onChange={(e) => setDraft({ ...draft, childAge: e.target.value })}
-                />
+                <input className={inputClass} value={draft.childAge} onChange={(e) => setDraft({ ...draft, childAge: e.target.value })} />
               </Field>
             </div>
 
@@ -431,12 +511,10 @@ export default function CrmPage() {
                 <select
                   className={inputClass}
                   value={draft.status}
-                  onChange={(e) => setDraft({ ...draft, status: e.target.value as LeadStatus })}
+                  onChange={(e) => setDraft({ ...draft, status: e.target.value })}
                 >
-                  {LEAD_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </option>
+                  {allStatuses.map((s) => (
+                    <option key={s} value={s}>{getStatusLabel(s)}</option>
                   ))}
                 </select>
               </Field>
@@ -444,11 +522,7 @@ export default function CrmPage() {
 
             <div className="mt-3">
               <Field label="Notes">
-                <textarea
-                  className={`${inputClass} min-h-24 resize-y`}
-                  value={draft.notes}
-                  onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-                />
+                <textarea className={`${inputClass} min-h-24 resize-y`} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
               </Field>
             </div>
 
@@ -481,24 +555,12 @@ export default function CrmPage() {
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
-        active
-          ? 'border-blue-600 bg-blue-600 text-white'
-          : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'
-      }`}
+      className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${active ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}
     >
       {children}
     </button>

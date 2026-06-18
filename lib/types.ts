@@ -1,12 +1,7 @@
 // Shared domain types for the lead ingestion tool.
 
-export type LeadStatus =
-  | 'new' // Just enquired, no real conversation yet
-  | 'interested' // Engaged, asking questions, positive tone
-  | 'hot' // Explicitly asked for visit, enrollment info, or next steps
-  | 'cold' // Went quiet, one-word replies, or explicitly said not interested
-  | 'enrolled' // Confirmed enrollment mentioned in conversation
-  | 'unknown'; // Claude could not determine status confidently
+// Built-in statuses are well-known strings; custom statuses are arbitrary strings.
+export type LeadStatus = string;
 
 export type ScreenshotType = 'inbox' | 'chat';
 

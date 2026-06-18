@@ -9,8 +9,8 @@ export const LEAD_STATUSES: LeadStatus[] = [
   'unknown',
 ];
 
-// English UI labels for each status.
-export const STATUS_LABELS: Record<LeadStatus, string> = {
+// English UI labels for built-in statuses.
+export const STATUS_LABELS: Record<string, string> = {
   new: 'New',
   interested: 'Interested',
   hot: 'Hot',
@@ -20,11 +20,10 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
 };
 
 /**
- * Tailwind badge classes per status, following the brief's color mapping:
- * new→blue, interested→orange, hot→green, cold→grey, enrolled→purple,
- * unknown→amber. Full literal strings so Tailwind's scanner keeps them.
+ * Tailwind badge classes per built-in status.
+ * Full literal strings so Tailwind's scanner keeps them.
  */
-export const STATUS_BADGE_CLASSES: Record<LeadStatus, string> = {
+export const STATUS_BADGE_CLASSES: Record<string, string> = {
   new: 'bg-blue-50 text-blue-700 border-blue-200',
   interested: 'bg-orange-50 text-orange-700 border-orange-200',
   hot: 'bg-green-50 text-green-700 border-green-200',
@@ -33,11 +32,22 @@ export const STATUS_BADGE_CLASSES: Record<LeadStatus, string> = {
   unknown: 'bg-amber-50 text-amber-700 border-amber-200',
 };
 
-export function isLeadStatus(value: unknown): value is LeadStatus {
-  return typeof value === 'string' && (LEAD_STATUSES as string[]).includes(value);
+// Fallback badge style for custom statuses.
+const CUSTOM_BADGE_CLASS = 'bg-slate-100 text-slate-700 border-slate-300';
+
+export function getStatusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
 }
 
-/** Coerce an arbitrary value into a valid status, defaulting to 'unknown'. */
+export function getStatusBadgeClass(status: string): string {
+  return STATUS_BADGE_CLASSES[status] ?? CUSTOM_BADGE_CLASS;
+}
+
+export function isBuiltInStatus(value: unknown): value is LeadStatus {
+  return typeof value === 'string' && LEAD_STATUSES.includes(value);
+}
+
+/** Coerce AI output to a known built-in status, defaulting to 'unknown'. */
 export function coerceStatus(value: unknown): LeadStatus {
-  return isLeadStatus(value) ? value : 'unknown';
+  return isBuiltInStatus(value) ? value : 'unknown';
 }

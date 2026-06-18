@@ -33,3 +33,9 @@ model Lead {
   @@index([displayName])
   @@index([status])
 }
+
+model CustomStatus {
+  id        String   @id @default(uuid())
+  label     String   @unique
+  createdAt DateTime @default(now())
+}
