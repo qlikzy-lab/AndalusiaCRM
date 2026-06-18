@@ -1,7 +1,6 @@
 import { Prisma, type Lead as PrismaLead } from '@prisma/client';
 import { prisma } from './prisma';
 import { normalizePhone } from './normalize';
-import { coerceStatus } from './leadStatus';
 import type { Lead, LeadDTO, LeadSource, PreparedLead } from './types';
 
 function parseFilenames(value: string): string[] {
@@ -23,7 +22,7 @@ export function toLeadDTO(row: PrismaLead): LeadDTO {
     childName: row.childName,
     childAge: row.childAge,
     notes: row.notes,
-    status: coerceStatus(row.status),
+    status: row.status,
     source: row.source as LeadSource,
     screenshotFilenames: parseFilenames(row.screenshotFilenames),
     firstSeenAt: row.firstSeenAt.toISOString(),
@@ -55,7 +54,7 @@ function preparedToCreateData(lead: PreparedLead) {
     childName: lead.childName,
     childAge: lead.childAge,
     notes: lead.notes ?? '',
-    status: coerceStatus(lead.status),
+    status: lead.status,
     source: lead.source,
     screenshotFilenames: JSON.stringify(lead.screenshotFilenames ?? []),
     rawExtraction: lead.rawExtraction ?? '',
@@ -93,7 +92,7 @@ export async function updateLeadFromPrepared(
       childName: lead.childName ?? existing.childName,
       childAge: lead.childAge ?? existing.childAge,
       notes: lead.notes || existing.notes,
-      status: coerceStatus(lead.status),
+      status: lead.status,
       screenshotFilenames: JSON.stringify(mergedFiles),
     },
   });
@@ -126,7 +125,7 @@ export async function updateLeadFields(
   if ('childName' in fields) data.childName = fields.childName ?? null;
   if ('childAge' in fields) data.childAge = fields.childAge ?? null;
   if (typeof fields.notes === 'string') data.notes = fields.notes;
-  if ('status' in fields) data.status = coerceStatus(fields.status);
+  if ('status' in fields) data.status = fields.status;
 
   const row = await prisma.lead.update({ where: { id }, data });
   return toLeadDTO(row);

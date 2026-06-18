@@ -9,6 +9,12 @@ import type { CustomStatusDTO } from '@/lib/customStatusRepo';
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-400 focus:outline-none';
 
+type SortKey = 'newest' | 'oldest' | 'updated' | 'name';
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 interface DraftLead {
   displayName: string;
   phoneNumber: string;
@@ -60,6 +66,7 @@ export default function CrmPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'table'>('list');
+  const [sortKey, setSortKey] = useState<SortKey>('newest');
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [draft, setDraft] = useState<DraftLead>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
@@ -111,7 +118,7 @@ export default function CrmPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return leads.filter((l) => {
+    const result = leads.filter((l) => {
       if (statusFilter !== 'all' && l.status !== statusFilter) return false;
       if (!q) return true;
       return (
@@ -121,7 +128,15 @@ export default function CrmPage() {
         (l.childName ?? '').toLowerCase().includes(q)
       );
     });
-  }, [leads, search, statusFilter]);
+    return result.sort((a, b) => {
+      switch (sortKey) {
+        case 'newest': return new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime();
+        case 'oldest': return new Date(a.firstSeenAt).getTime() - new Date(b.firstSeenAt).getTime();
+        case 'updated': return new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime();
+        case 'name': return (a.displayName ?? a.phoneNumber ?? '').localeCompare(b.displayName ?? b.phoneNumber ?? '');
+      }
+    });
+  }, [leads, search, statusFilter, sortKey]);
 
   function openAdd() {
     setDraft(EMPTY_DRAFT);
@@ -276,6 +291,22 @@ export default function CrmPage() {
               + Status
             </button>
           </div>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-700">
+              {filtered.length} {filtered.length === 1 ? 'lead' : 'leads'}
+              {filtered.length !== leads.length && <span className="font-normal text-slate-400"> of {leads.length}</span>}
+            </p>
+            <select
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 focus:outline-none"
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="updated">Recently updated</option>
+              <option value="name">Name A–Z</option>
+            </select>
+          </div>
           <div className="flex gap-2">
             <button
               type="button"
@@ -335,7 +366,7 @@ export default function CrmPage() {
                     onClick={() => openEdit(lead)}
                     className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-slate-300"
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate font-medium text-slate-900">
                         {lead.displayName || lead.phoneNumber || 'Unknown contact'}
                       </p>
@@ -344,9 +375,12 @@ export default function CrmPage() {
                         {lead.childName ? ` · ${lead.childName}` : ''}
                       </p>
                     </div>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(lead.status)}`}>
-                      {getStatusLabel(lead.status)}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(lead.status)}`}>
+                        {getStatusLabel(lead.status)}
+                      </span>
+                      <span className="text-xs text-slate-400">{formatDate(lead.firstSeenAt)}</span>
+                    </div>
                   </button>
                 </li>
               ))}
@@ -361,6 +395,7 @@ export default function CrmPage() {
                     <th className="px-4 py-3">Child</th>
                     <th className="px-4 py-3">Age / Grade</th>
                     <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Added</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -387,16 +422,12 @@ export default function CrmPage() {
                           {getStatusLabel(lead.status)}
                         </span>
                       </td>
+                      <td className="px-4 py-3 text-slate-500">{formatDate(lead.firstSeenAt)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-          {!loading && !error && filtered.length > 0 && (
-            <p className="mt-3 text-xs text-slate-400">
-              {filtered.length} of {leads.length} lead{leads.length === 1 ? '' : 's'}
-            </p>
           )}
         </div>
       </main>
