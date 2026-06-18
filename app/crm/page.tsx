@@ -15,6 +15,12 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function whatsappUrl(phone: string | null): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
 interface DraftLead {
   displayName: string;
   phoneNumber: string;
@@ -371,7 +377,21 @@ export default function CrmPage() {
                         {lead.displayName || lead.phoneNumber || 'Unknown contact'}
                       </p>
                       <p className="truncate text-xs text-slate-500">
-                        {lead.phoneNumber || lead.phoneNumberNormalized || 'No phone'}
+                        {(() => {
+                          const phone = lead.phoneNumber || lead.phoneNumberNormalized;
+                          const url = whatsappUrl(phone ?? null);
+                          return url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-green-600 underline hover:text-green-700"
+                            >
+                              {phone}
+                            </a>
+                          ) : 'No phone';
+                        })()}
                         {lead.childName ? ` · ${lead.childName}` : ''}
                       </p>
                     </div>
@@ -409,7 +429,20 @@ export default function CrmPage() {
                         {lead.displayName || <span className="text-slate-400">—</span>}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
-                        {lead.phoneNumber || <span className="text-slate-400">—</span>}
+                        {(() => {
+                          const url = whatsappUrl(lead.phoneNumber ?? null);
+                          return url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-green-600 underline hover:text-green-700"
+                            >
+                              {lead.phoneNumber}
+                            </a>
+                          ) : <span className="text-slate-400">—</span>;
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
                         {lead.childName || <span className="text-slate-400">—</span>}
